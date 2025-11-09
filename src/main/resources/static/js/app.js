@@ -1,7 +1,6 @@
-// Application state
+// Application state - stored in browser memory only
 let sessions = [];
 let currentSessionId = null;
-let tools = [];
 
 // DOM elements
 const sessionList = document.getElementById('session-list');
@@ -13,13 +12,6 @@ const chatTitle = document.getElementById('chat-title');
 const renameSessionBtn = document.getElementById('rename-session-btn');
 const clearSessionBtn = document.getElementById('clear-session-btn');
 const deleteSessionBtn = document.getElementById('delete-session-btn');
-const toolsList = document.getElementById('tools-list');
-const refreshToolsBtn = document.getElementById('refresh-tools-btn');
-
-// User info elements
-const userInitials = document.getElementById('user-initials');
-const userName = document.getElementById('user-name');
-const userLogin = document.getElementById('user-login');
 
 // Sidebar toggle elements
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
@@ -46,7 +38,6 @@ function initSpeechRecognition() {
     recognition.lang = 'en-US';
 
     const dictateBtn = document.getElementById('dictate-btn');
-    const messageInput = document.getElementById('message-input');
 
     recognition.onstart = function() {
         isListening = true;
@@ -109,70 +100,14 @@ function initSpeechRecognition() {
 function stopListening() {
     isListening = false;
     const dictateBtn = document.getElementById('dictate-btn');
-    const messageInput = document.getElementById('message-input');
-
     dictateBtn.classList.remove('listening');
     messageInput.placeholder = 'Type your message here...';
-}
-
-// Load user information from server
-async function loadUserInfo() {
-    console.log('Loading user info...');
-    try {
-        const response = await fetch('http://127.0.0.1:9090/bff/userinfo', {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include'
-        });
-
-        console.log('Response status:', response.status);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const userInfo = await response.json();
-        console.log('Raw user info response:', userInfo);
-
-        if (userInfo.name) {
-            userName.textContent = userInfo.name;
-            const initials = userInfo.name
-                .split(' ')
-                .map(word => word.charAt(0))
-                .join('')
-                .substring(0, 2)
-                .toUpperCase();
-            userInitials.textContent = initials;
-        } else {
-            userName.textContent = 'Unknown User';
-            userInitials.textContent = 'UU';
-        }
-
-        const loginField = userInfo.login || userInfo.userLogin || userInfo.username || userInfo.userId;
-        if (loginField) {
-            userLogin.textContent = `@${loginField}`;
-        } else {
-            userLogin.textContent = '@unknown';
-        }
-
-        console.log('User info loaded successfully:', userInfo);
-    } catch (error) {
-        console.error('Failed to load user info:', error);
-        userName.textContent = 'User';
-        userLogin.textContent = 'Service unavailable';
-        userInitials.textContent = 'U';
-    }
 }
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     initSpeechRecognition();
-    loadSessions();
-    loadTools();
-    loadUserInfo();
+    loadSessionsFromStorage();
     setupEventListeners();
     restoreSidebarState();
 });
@@ -200,8 +135,42 @@ function setupEventListeners() {
     renameSessionBtn.addEventListener('click', renameSession);
     clearSessionBtn.addEventListener('click', clearCurrentSession);
     deleteSessionBtn.addEventListener('click', deleteCurrentSession);
-    refreshToolsBtn.addEventListener('click', loadTools);
     sidebarToggleBtn.addEventListener('click', toggleSidebar);
+}
+
+// Session Storage Management
+function saveSessionsToStorage() {
+    try {
+        sessionStorage.setItem('chatSessions', JSON.stringify(sessions));
+        sessionStorage.setItem('currentSessionId', currentSessionId);
+    } catch (e) {
+        console.error('Failed to save sessions to storage:', e);
+    }
+}
+
+function loadSessionsFromStorage() {
+    try {
+        const savedSessions = sessionStorage.getItem('chatSessions');
+        const savedCurrentId = sessionStorage.getItem('currentSessionId');
+
+        if (savedSessions) {
+            sessions = JSON.parse(savedSessions);
+        }
+
+        if (sessions.length === 0) {
+            createNewSession();
+        } else {
+            renderSessionList();
+            if (savedCurrentId && sessions.find(s => s.id === savedCurrentId)) {
+                selectSession(savedCurrentId);
+            } else {
+                selectSession(sessions[0].id);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load sessions from storage:', e);
+        createNewSession();
+    }
 }
 
 // Toggle sidebar visibility
@@ -258,7 +227,7 @@ function restoreSidebarState() {
     }
 }
 
-// Handle window resize to adjust mobile behavior
+// Handle window resize
 function handleResize() {
     const isMobile = window.innerWidth <= 768;
     const isHidden = sidebar.classList.contains('hidden');
@@ -271,24 +240,6 @@ function handleResize() {
         }
     } else {
         sidebar.classList.remove('open');
-    }
-}
-
-// Load sessions from server
-async function loadSessions() {
-    try {
-        const response = await fetch('/bff/ai_backend/mcp/api/sessions');
-        sessions = await response.json();
-
-        if (sessions.length === 0) {
-            await createNewSession();
-        } else {
-            renderSessionList();
-            selectSession(sessions[0].id);
-        }
-    } catch (error) {
-        console.error('Error loading sessions:', error);
-        showError('Failed to load sessions');
     }
 }
 
@@ -322,6 +273,7 @@ function selectSession(sessionId) {
         chatTitle.textContent = session.name;
         renderMessages(session.messages);
         renderSessionList();
+        saveSessionsToStorage();
     }
 }
 
@@ -360,13 +312,13 @@ function appendMessage(message) {
 
     const feedbackButtons = message.role === 'assistant' ? `
         <div class="message-feedback">
-            <button class="feedback-btn thumbs-up ${message.liked === true ? 'active' : ''}" 
-                    onclick="provideFeedback('${message.id}', true)" 
+            <button class="feedback-btn thumbs-up ${message.liked === true ? 'active' : ''}"
+                    onclick="provideFeedback('${message.id}', true)"
                     title="Thumbs up">
                 👍
             </button>
-            <button class="feedback-btn thumbs-down ${message.liked === false ? 'active' : ''}" 
-                    onclick="provideFeedback('${message.id}', false)" 
+            <button class="feedback-btn thumbs-down ${message.liked === false ? 'active' : ''}"
+                    onclick="provideFeedback('${message.id}', false)"
                     title="Thumbs down">
                 👎
             </button>
@@ -403,21 +355,41 @@ async function sendMessage() {
     sendBtn.disabled = true;
     sendBtn.innerHTML = '<div class="loading"></div>';
 
+    // Create user message
     const userMessage = {
-        id: generateTempId(),
+        id: generateId(),
         role: 'user',
         content: messageText,
         timestamp: new Date().toISOString()
     };
-    appendMessage(userMessage);
 
+    // Add to current session
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (session) {
+        session.messages.push(userMessage);
+        session.lastActivity = new Date().toISOString();
+        saveSessionsToStorage();
+    }
+
+    appendMessage(userMessage);
     messageInput.value = '';
 
-    let assistantMessageId = null;
+    // Create assistant message
+    const assistantMessageId = generateId();
+    const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString()
+    };
+
+    session.messages.push(assistantMessage);
+    appendMessage(assistantMessage);
+
     let assistantContent = '';
 
     try {
-        const response = await fetch('/bff/ai_backend/mcp/api/chat', {
+        const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -435,7 +407,6 @@ async function sendMessage() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-
         let buffer = '';
 
         while (true) {
@@ -446,7 +417,6 @@ async function sendMessage() {
             }
 
             buffer += decoder.decode(value, { stream: true });
-
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
@@ -458,18 +428,18 @@ async function sendMessage() {
                         try {
                             const event = JSON.parse(data);
 
-                            if (event.messageId && !assistantMessageId) {
-                                assistantMessageId = event.messageId;
-                                const assistantMessage = {
-                                    id: assistantMessageId,
-                                    role: 'assistant',
-                                    content: '',
-                                    timestamp: new Date().toISOString()
-                                };
-                                appendMessage(assistantMessage);
-                            } else if (event.content) {
+                            if (event.content) {
                                 assistantContent += event.content;
                                 updateMessageContent(assistantMessageId, assistantContent);
+
+                                // Update session
+                                if (session) {
+                                    const msg = session.messages.find(m => m.id === assistantMessageId);
+                                    if (msg) {
+                                        msg.content = assistantContent;
+                                        saveSessionsToStorage();
+                                    }
+                                }
                             } else if (event.error) {
                                 showError(event.error);
                             }
@@ -481,11 +451,20 @@ async function sendMessage() {
             }
         }
 
-        await refreshCurrentSession();
-
     } catch (error) {
         console.error('Error sending message:', error);
         showError('Failed to send message: ' + error.message);
+
+        // Update with error message
+        assistantContent = 'Error: Unable to get response from AI service.';
+        if (session) {
+            const msg = session.messages.find(m => m.id === assistantMessageId);
+            if (msg) {
+                msg.content = assistantContent;
+                saveSessionsToStorage();
+            }
+        }
+        updateMessageContent(assistantMessageId, assistantContent);
     } finally {
         messageInput.disabled = false;
         sendBtn.disabled = false;
@@ -494,9 +473,9 @@ async function sendMessage() {
     }
 }
 
-// Generate a temporary ID for messages
-function generateTempId() {
-    return 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+// Generate a unique ID
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
 // Update message content during streaming
@@ -512,92 +491,56 @@ function updateMessageContent(messageId, content) {
 }
 
 // Create new session
-async function createNewSession() {
-    try {
-        const sessionCount = sessions.length + 1;
-        const response = await fetch('/bff/ai_backend/mcp/api/sessions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                name: `Chat ${sessionCount}`
-            })
-        });
+function createNewSession() {
+    const sessionCount = sessions.length + 1;
+    const newSession = {
+        id: generateId(),
+        name: `Chat ${sessionCount}`,
+        messages: [],
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString()
+    };
 
-        const newSession = await response.json();
-        sessions.push(newSession);
-        renderSessionList();
-        selectSession(newSession.id);
-    } catch (error) {
-        console.error('Error creating session:', error);
-        showError('Failed to create new session');
-    }
+    sessions.push(newSession);
+    saveSessionsToStorage();
+    renderSessionList();
+    selectSession(newSession.id);
 }
 
 // Rename session
-async function renameSession() {
+function renameSession() {
     if (!currentSessionId) return;
 
     const session = sessions.find(s => s.id === currentSessionId);
     const newName = prompt('Enter new name for this chat:', session.name);
 
     if (newName && newName.trim()) {
-        try {
-            const response = await fetch(`/bff/ai_backend/mcp/api/sessions/${currentSessionId}/name`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    name: newName.trim()
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                session.name = newName.trim();
-                chatTitle.textContent = session.name;
-                renderSessionList();
-            } else {
-                showError('Failed to rename session');
-            }
-        } catch (error) {
-            console.error('Error renaming session:', error);
-            showError('Failed to rename session');
-        }
+        session.name = newName.trim();
+        chatTitle.textContent = session.name;
+        renderSessionList();
+        saveSessionsToStorage();
     }
 }
 
 // Clear current session
-async function clearCurrentSession() {
+function clearCurrentSession() {
     if (!currentSessionId) return;
 
     if (!confirm('Are you sure you want to clear all messages in this chat?')) {
         return;
     }
 
-    try {
-        const response = await fetch(`/bff/ai_backend/mcp/api/sessions/${currentSessionId}/messages`, {
-            method: 'DELETE'
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            await refreshCurrentSession();
-        } else {
-            showError('Failed to clear session');
-        }
-    } catch (error) {
-        console.error('Error clearing session:', error);
-        showError('Failed to clear session');
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (session) {
+        session.messages = [];
+        session.lastActivity = new Date().toISOString();
+        renderMessages(session.messages);
+        saveSessionsToStorage();
     }
 }
 
 // Delete current session
-async function deleteCurrentSession() {
+function deleteCurrentSession() {
     if (!currentSessionId) return;
 
     if (sessions.length === 1) {
@@ -609,45 +552,31 @@ async function deleteCurrentSession() {
         return;
     }
 
-    try {
-        const response = await fetch(`/bff/ai_backend/mcp/api/sessions/${currentSessionId}`, {
-            method: 'DELETE'
-        });
+    sessions = sessions.filter(s => s.id !== currentSessionId);
+    saveSessionsToStorage();
+    renderSessionList();
 
-        const data = await response.json();
-
-        if (data.success) {
-            sessions = sessions.filter(s => s.id !== currentSessionId);
-            renderSessionList();
-
-            if (sessions.length > 0) {
-                selectSession(sessions[0].id);
-            }
-        } else {
-            showError('Failed to delete session');
-        }
-    } catch (error) {
-        console.error('Error deleting session:', error);
-        showError('Failed to delete session');
+    if (sessions.length > 0) {
+        selectSession(sessions[0].id);
     }
 }
 
-// Refresh current session from server
-async function refreshCurrentSession() {
-    if (!currentSessionId) return;
+// Provide feedback on AI responses
+function provideFeedback(messageId, liked) {
+    if (!currentSessionId) {
+        console.error('No active session');
+        return;
+    }
 
-    try {
-        const response = await fetch(`/bff/ai_backend/mcp/api/sessions/${currentSessionId}`);
-        const updatedSession = await response.json();
-
-        const index = sessions.findIndex(s => s.id === currentSessionId);
-        if (index !== -1) {
-            sessions[index] = updatedSession;
-            renderMessages(updatedSession.messages);
-            renderSessionList();
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (session) {
+        const message = session.messages.find(m => m.id === messageId);
+        if (message) {
+            message.liked = liked;
+            renderMessages(session.messages);
+            saveSessionsToStorage();
+            console.log('Feedback recorded:', liked ? 'thumbs up' : 'thumbs down');
         }
-    } catch (error) {
-        console.error('Error refreshing session:', error);
     }
 }
 
@@ -676,7 +605,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Format markdown content for LLM responses
+// Format markdown content
 function formatMarkdown(text) {
     if (!text) return '';
 
@@ -771,81 +700,4 @@ function copyToClipboard(button) {
             button.textContent = '📋';
         }, 2000);
     });
-}
-
-// Load available tools from MCP server
-async function loadTools() {
-    toolsList.innerHTML = '<div class="tools-loading">Loading tools...</div>';
-
-    try {
-        const response = await fetch('/bff/ai_backend/mcp/api/tools');
-        tools = await response.json();
-        renderTools();
-    } catch (error) {
-        console.error('Error loading tools:', error);
-        toolsList.innerHTML = '<div class="tools-empty">Unable to load tools</div>';
-    }
-}
-
-// Render tools list
-function renderTools() {
-    if (!tools || tools.length === 0) {
-        toolsList.innerHTML = '<div class="tools-empty">No tools available</div>';
-        return;
-    }
-
-    toolsList.innerHTML = '';
-
-    tools.forEach(tool => {
-        const toolItem = document.createElement('div');
-        toolItem.className = 'tool-item';
-        toolItem.title = tool.description || tool.name;
-
-        toolItem.innerHTML = `
-            <div class="tool-name">${escapeHtml(tool.name)}</div>
-            ${tool.description ? `<div class="tool-description">${escapeHtml(tool.description)}</div>` : ''}
-        `;
-
-        toolsList.appendChild(toolItem);
-    });
-}
-
-// Provide feedback on AI responses
-async function provideFeedback(messageId, liked) {
-    if (!currentSessionId) {
-        console.error('No active session');
-        return;
-    }
-
-    try {
-        const response = await fetch('/bff/ai_backend/mcp/api/feedback', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                sessionId: currentSessionId,
-                messageId: messageId,
-                liked: liked
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            const session = sessions.find(s => s.id === currentSessionId);
-            if (session) {
-                const message = session.messages.find(m => m.id === messageId);
-                if (message) {
-                    message.liked = liked;
-                    renderMessages(session.messages);
-                }
-            }
-            console.log('Feedback recorded:', liked ? 'thumbs up' : 'thumbs down');
-        } else {
-            console.error('Failed to record feedback:', data.message);
-        }
-    } catch (error) {
-        console.error('Error providing feedback:', error);
-    }
 }

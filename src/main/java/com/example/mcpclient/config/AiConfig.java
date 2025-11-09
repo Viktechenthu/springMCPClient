@@ -1,28 +1,60 @@
 package com.example.mcpclient.config;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class AiConfig {
 
+    @Value("${spring.ai.ollama.base-url:http://localhost:11434}")
+    private String ollamaBaseUrl;
+
+    @Value("${spring.ai.ollama.chat.options.model:llama2}")
+    private String model;
+
+    @Value("${spring.ai.ollama.chat.options.temperature:0.8}")
+    private Double temperature;
+
     /**
-     * ChatClient with tool callbacks for non-streaming requests
+     * Configure Ollama API
      */
     @Bean
-    public ChatClient chatClient(ChatClient.Builder chatClientBuilder, ToolCallbackProvider tools) {
-        return chatClientBuilder.defaultToolCallbacks(tools).build();
+    public OllamaApi ollamaApi() {
+        return new OllamaApi(ollamaBaseUrl);
     }
 
     /**
-     * Expose ChatModel bean for direct streaming access
-     * This is already auto-configured by Spring AI, we just make it explicit here
+     * Configure Ollama Chat Model
      */
     @Bean
-    public ChatModel chatModel(ChatModel chatModel) {
-        return chatModel;
+    public OllamaChatModel ollamaChatModel(OllamaApi ollamaApi) {
+        return OllamaChatModel.builder()
+                .withOllamaApi(ollamaApi)
+                .withDefaultOptions(OllamaOptions.builder()
+                        .withModel(model)
+                        .withTemperature(temperature)
+                        .build())
+                .build();
+    }
+
+    /**
+     * ChatClient Builder using Ollama
+     */
+    @Bean
+    public ChatClient.Builder chatClientBuilder(OllamaChatModel chatModel) {
+        return ChatClient.builder(chatModel);
+    }
+
+    /**
+     * ChatClient instance (can be used for non-streaming requests)
+     */
+    @Bean
+    public ChatClient chatClient(ChatClient.Builder chatClientBuilder) {
+        return chatClientBuilder.build();
     }
 }

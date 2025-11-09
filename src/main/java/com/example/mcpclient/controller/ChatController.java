@@ -4,7 +4,6 @@ import com.example.mcpclient.dto.ChatRequest;
 import com.example.mcpclient.dto.ChatResponse;
 import com.example.mcpclient.model.ChatSession;
 import com.example.mcpclient.model.Message;
-import com.example.mcpclient.service.AzureService;
 import com.example.mcpclient.service.McpClientService;
 import com.example.mcpclient.service.OllamaService;
 import com.example.mcpclient.service.SessionService;
@@ -34,10 +33,9 @@ public class ChatController {
     private final SessionService sessionService;
     private final McpClientService mcpClientService;
     private final OllamaService ollamaService;
-    private final AzureService azService;
 
     /**
-     * Send a chat message with streaming response
+     * Send a chat message with streaming response using Ollama
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestBody ChatRequest request, HttpServletRequest req) {
@@ -49,8 +47,8 @@ public class ChatController {
         if (sessionOpt.isEmpty()) {
             try {
                 emitter.send(SseEmitter.event()
-                    .name("error")
-                    .data("{\"error\": \"Session not found\"}"));
+                        .name("error")
+                        .data("{\"error\": \"Session not found\"}"));
                 emitter.complete();
             } catch (IOException e) {
                 emitter.completeWithError(e);
@@ -71,8 +69,8 @@ public class ChatController {
         // Send user message confirmation
         try {
             emitter.send(SseEmitter.event()
-                .name("userMessage")
-                .data("{\"id\": \"" + userMessage.getId() + "\"}"));
+                    .name("userMessage")
+                    .data("{\"id\": \"" + userMessage.getId() + "\"}"));
         } catch (IOException e) {
             log.error("Error sending user message event", e);
             emitter.completeWithError(e);
@@ -85,8 +83,8 @@ public class ChatController {
         // Send message start event
         try {
             emitter.send(SseEmitter.event()
-                .name("start")
-                .data("{\"messageId\": \"" + assistantMessageId + "\"}"));
+                    .name("start")
+                    .data("{\"messageId\": \"" + assistantMessageId + "\"}"));
         } catch (IOException e) {
             log.error("Error sending start event", e);
             emitter.completeWithError(e);
@@ -100,23 +98,23 @@ public class ChatController {
             try {
                 StringBuilder fullResponse = new StringBuilder();
 
-                // Stream response from Azure
-                azService.chatStream(
-                    request.getMessage(),
-                    session.getMessages(),
-                    finalToken,
-                    chunk -> {
-                        fullResponse.append(chunk);
-                        try {
-                            // Send each chunk to the client
-                            emitter.send(SseEmitter.event()
-                                .name("chunk")
-                                .data("{\"content\": \"" + escapeJson(chunk) + "\"}"));
-                        } catch (IOException e) {
-                            log.error("Error sending chunk", e);
-                            throw new RuntimeException(e);
+                // Stream response from Ollama
+                ollamaService.chatStream(
+                        request.getMessage(),
+                        session.getMessages(),
+                        finalToken,
+                        chunk -> {
+                            fullResponse.append(chunk);
+                            try {
+                                // Send each chunk to the client
+                                emitter.send(SseEmitter.event()
+                                        .name("chunk")
+                                        .data("{\"content\": \"" + escapeJson(chunk) + "\"}"));
+                            } catch (IOException e) {
+                                log.error("Error sending chunk", e);
+                                throw new RuntimeException(e);
+                            }
                         }
-                    }
                 );
 
                 // Add complete assistant message to session
@@ -126,8 +124,8 @@ public class ChatController {
 
                 // Send completion event
                 emitter.send(SseEmitter.event()
-                    .name("done")
-                    .data("{\"messageId\": \"" + assistantMessageId + "\"}"));
+                        .name("done")
+                        .data("{\"messageId\": \"" + assistantMessageId + "\"}"));
 
                 emitter.complete();
                 log.info("Streaming completed for session: {}", request.getSessionId());
@@ -136,8 +134,8 @@ public class ChatController {
                 log.error("Error during streaming", e);
                 try {
                     emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data("{\"error\": \"" + escapeJson(e.getMessage()) + "\"}"));
+                            .name("error")
+                            .data("{\"error\": \"" + escapeJson(e.getMessage()) + "\"}"));
                 } catch (IOException ioException) {
                     log.error("Error sending error event", ioException);
                 }
@@ -154,12 +152,12 @@ public class ChatController {
     private String escapeJson(String str) {
         if (str == null) return "";
         return str.replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-            .replace("\b", "\\b")
-            .replace("\f", "\\f");
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f");
     }
 
     /**
@@ -168,8 +166,8 @@ public class ChatController {
     @PostMapping("/sessions")
     public ResponseEntity<ChatSession> createSession(@RequestBody(required = false) Map<String, String> body) {
         String name = (body != null && body.containsKey("name"))
-            ? body.get("name")
-            : "New Chat";
+                ? body.get("name")
+                : "New Chat";
         ChatSession session = sessionService.createSession(name);
         return ResponseEntity.ok(session);
     }
@@ -188,8 +186,8 @@ public class ChatController {
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<ChatSession> getSession(@PathVariable String sessionId) {
         return sessionService.getSession(sessionId)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     /**
@@ -208,8 +206,8 @@ public class ChatController {
      */
     @PutMapping("/sessions/{sessionId}/name")
     public ResponseEntity<Map<String, Boolean>> updateSessionName(
-        @PathVariable String sessionId,
-        @RequestBody Map<String, String> body) {
+            @PathVariable String sessionId,
+            @RequestBody Map<String, String> body) {
         String newName = body.get("name");
         boolean updated = sessionService.updateSessionName(sessionId, newName);
         Map<String, Boolean> response = new HashMap<>();
@@ -238,6 +236,7 @@ public class ChatController {
 
         Boolean mcpServerHealthy = mcpClientService.checkServerHealth().block();
         health.put("mcpServer", mcpServerHealthy ? "UP" : "DOWN");
+        health.put("aiProvider", "Ollama");
 
         return ResponseEntity.ok(health);
     }
@@ -260,29 +259,29 @@ public class ChatController {
      */
     @PostMapping("/feedback")
     public ResponseEntity<ChatResponse> provideFeedback(
-        @RequestBody Map<String, Object> feedbackRequest) {
+            @RequestBody Map<String, Object> feedbackRequest) {
         try {
             String sessionId = (String) feedbackRequest.get("sessionId");
             String messageId = (String) feedbackRequest.get("messageId");
             Boolean liked = (Boolean) feedbackRequest.get("liked");
 
             log.info("Received feedback for session: {}, message: {}, liked: {}",
-                sessionId, messageId, liked);
+                    sessionId, messageId, liked);
 
             Optional<ChatSession> sessionOpt = sessionService.getSession(sessionId);
             if (sessionOpt.isEmpty()) {
                 return ResponseEntity.badRequest()
-                    .body(ChatResponse.error("Session not found"));
+                        .body(ChatResponse.error("Session not found"));
             }
 
             ChatSession session = sessionOpt.get();
             Optional<Message> messageOpt = session.getMessages().stream()
-                .filter(msg -> msg.getId().equals(messageId))
-                .findFirst();
+                    .filter(msg -> msg.getId().equals(messageId))
+                    .findFirst();
 
             if (messageOpt.isEmpty()) {
                 return ResponseEntity.badRequest()
-                    .body(ChatResponse.error("Message not found"));
+                        .body(ChatResponse.error("Message not found"));
             }
 
             Message message = messageOpt.get();
@@ -293,7 +292,7 @@ public class ChatController {
         } catch (Exception e) {
             log.error("Error recording feedback", e);
             return ResponseEntity.internalServerError()
-                .body(ChatResponse.error("Error recording feedback: " + e.getMessage()));
+                    .body(ChatResponse.error("Error recording feedback: " + e.getMessage()));
         }
     }
 }

@@ -27,53 +27,9 @@ body {
     overflow: hidden;
 }
 
-/* User Info Bar */
-.user-info-bar {
-    background-color: var(--sidebar-bg);
-    color: white;
-    padding: 10px 20px;
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.user-info-content {
+.app-container-full {
     display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.user-avatar {
-    width: 36px;
-    height: 36px;
-    background-color: var(--primary-color);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 14px;
-    color: white;
-}
-
-.user-details {
-    display: flex;
-    flex-direction: column;
-}
-
-#user-name {
-    font-weight: 600;
-    font-size: 14px;
-    margin-bottom: 2px;
-}
-
-#user-login {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.app-container {
-    display: flex;
-    height: calc(100vh - 56px); /* Subtract user bar height */
+    height: 100vh;
 }
 
 /* Sidebar */
@@ -115,84 +71,6 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 10px 0;
-}
-
-.tools-section {
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 15px 20px;
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.tools-header {
-    font-size: 0.9rem;
-    font-weight: 600;
-    margin-bottom: 10px;
-    color: rgba(255, 255, 255, 0.9);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.tools-header .refresh-btn {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    padding: 4px;
-    font-size: 1rem;
-    transition: color 0.2s;
-}
-
-.tools-header .refresh-btn:hover {
-    color: rgba(255, 255, 255, 1);
-}
-
-.tools-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.tool-item {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 10px;
-    border-radius: 6px;
-    border-left: 3px solid var(--primary-color);
-    transition: background 0.2s;
-}
-
-.tool-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.tool-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: white;
-    margin-bottom: 4px;
-}
-
-.tool-description {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.7);
-    line-height: 1.4;
-}
-
-.tools-empty {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.5);
-    font-style: italic;
-    text-align: center;
-    padding: 10px;
-}
-
-.tools-loading {
-    text-align: center;
-    padding: 10px;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 0.85rem;
 }
 
 .session-item {
@@ -295,7 +173,7 @@ body {
     display: flex;
     gap: 10px;
     max-width: 80%;
-    min-width: 0; /* Allow shrinking */
+    min-width: 0;
     animation: fadeIn 0.3s ease-in;
 }
 
@@ -359,32 +237,28 @@ body {
 }
 
 .message-wrapper {
-    min-width: 0; /* Allow shrinking */
+    min-width: 0;
     flex: 1;
     max-width: 100%;
 }
 
-/* Handle very long text strings without spaces */
 .message-content p {
     word-break: break-all;
     overflow-wrap: anywhere;
     hyphens: auto;
 }
 
-/* Special handling for URLs and long strings */
 .message-content a,
 .message-content code:not(.inline-code) {
     word-break: break-all;
     overflow-wrap: anywhere;
 }
 
-/* Ensure inline elements don't break layout */
 .message-content * {
     max-width: 100%;
     box-sizing: border-box;
 }
 
-/* Formatted content styles */
 .message-content h1,
 .message-content h2,
 .message-content h3 {
@@ -514,7 +388,6 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Adjust user message styles to not interfere with code formatting */
 .message.user .message-content .inline-code {
     background-color: rgba(255, 255, 255, 0.2);
     color: rgba(255, 255, 255, 0.9);
@@ -534,7 +407,6 @@ body {
     color: rgba(255, 255, 255, 0.95);
 }
 
-/* Table formatting */
 .table-container {
     margin: 12px 0;
     overflow-x: auto;
@@ -587,7 +459,6 @@ body {
     border-bottom: none;
 }
 
-/* Table in user messages */
 .message.user .message-content .markdown-table {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.3);
@@ -611,7 +482,6 @@ body {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Blockquotes and horizontal rules */
 .message-content blockquote {
     border-left: 4px solid var(--primary-color);
     margin: 12px 0;
@@ -645,7 +515,6 @@ body {
     margin-top: 5px;
 }
 
-/* Message Footer */
 .message-footer {
     display: flex;
     justify-content: space-between;
@@ -653,7 +522,6 @@ body {
     margin-top: 8px;
 }
 
-/* Message Feedback */
 .message-feedback {
     display: flex;
     gap: 8px;
@@ -692,7 +560,6 @@ body {
     transform: scale(1.05);
 }
 
-/* Hide feedback on user messages */
 .message.user .message-feedback {
     display: none;
 }
@@ -711,11 +578,10 @@ body {
     margin-bottom: 10px;
 }
 
-/* Input Container */
 .input-container {
     display: flex;
     gap: 10px;
-    align-items: center; /* Changed from flex-end to center */
+    align-items: center;
     padding: 15px;
 }
 
@@ -773,7 +639,6 @@ body {
     border-color: var(--primary-color);
 }
 
-/* Buttons */
 .btn {
     padding: 10px 20px;
     border: none;
@@ -832,7 +697,6 @@ body {
     gap: 5px;
 }
 
-/* Loading indicator */
 .loading {
     display: inline-block;
     width: 20px;
@@ -847,7 +711,6 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Streaming indicator animation */
 .streaming-indicator {
     display: inline-flex;
     gap: 6px;
@@ -886,7 +749,6 @@ body {
     }
 }
 
-/* Scrollbar styling */
 .session-list::-webkit-scrollbar,
 .chat-container::-webkit-scrollbar,
 .code-block pre::-webkit-scrollbar {
@@ -922,7 +784,6 @@ body {
     background: var(--secondary-color);
 }
 
-/* Message content scrollbar styling */
 .message-content::-webkit-scrollbar,
 .table-container::-webkit-scrollbar {
     width: 8px;
@@ -946,7 +807,6 @@ body {
     background: var(--secondary-color);
 }
 
-/* User message scrollbars */
 .message.user .message-content::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.1);
 }
@@ -959,34 +819,7 @@ body {
     background: rgba(255, 255, 255, 0.5);
 }
 
-/* Responsive */
 @media (max-width: 768px) {
-    .user-info-bar {
-        padding: 8px 15px;
-    }
-
-    .user-info-content {
-        gap: 8px;
-    }
-
-    .user-avatar {
-        width: 32px;
-        height: 32px;
-        font-size: 13px;
-    }
-
-    #user-name {
-        font-size: 13px;
-    }
-
-    #user-login {
-        font-size: 11px;
-    }
-
-    .app-container {
-        height: calc(100vh - 52px); /* Adjust for smaller user bar */
-    }
-
     .sidebar {
         position: absolute;
         left: -280px;
@@ -994,7 +827,7 @@ body {
         z-index: 1000;
         transition: left 0.3s;
         width: 280px;
-        transform: none; /* Override desktop transform */
+        transform: none;
     }
 
     .sidebar.open {
@@ -1003,8 +836,8 @@ body {
 
     .sidebar.hidden {
         left: -280px;
-        transform: none; /* Override desktop transform */
-        width: 280px; /* Keep width for mobile */
+        transform: none;
+        width: 280px;
     }
 
     .main-content {
@@ -1023,7 +856,7 @@ body {
     }
 
     .message-content {
-        max-width: calc(100vw - 120px); /* Account for avatar and padding */
+        max-width: calc(100vw - 120px);
     }
 
     .code-block {
@@ -1063,7 +896,6 @@ body {
         font-size: 1.1rem;
     }
 
-    /* Mobile streaming indicator adjustments */
     .streaming-indicator span {
         width: 8px;
         height: 8px;

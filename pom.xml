@@ -20,7 +20,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-ai.version>1.0.0</spring-ai.version>
+        <spring-ai.version>1.0.0-M5</spring-ai.version>
     </properties>
 
     <dependencyManagement>
@@ -54,25 +54,10 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
-        <!--OLD Spring AI Dependencies
+        <!-- Spring AI Ollama (Core AI integration) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-mcp-client-spring-boot-starter</artifactId>
-        </dependency>
-         -->
-        <!--NEW Spring AI Dependencies -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-mcp-client</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-azure-openai</artifactId>
+            <artifactId>spring-ai-ollama</artifactId>
         </dependency>
 
         <!-- JSON Processing -->
@@ -81,7 +66,7 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- HTTP Client -->
+        <!-- HTTP Client for WebFlux (needed for reactive operations) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
@@ -135,6 +120,14 @@
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
+        </repository>
+        <repository>
+            <id>spring-snapshots</id>
+            <name>Spring Snapshots</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
         </repository>
     </repositories>
 

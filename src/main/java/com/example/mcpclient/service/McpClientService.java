@@ -2,7 +2,6 @@ package com.example.mcpclient.service;
 
 import com.example.mcpclient.model.Message;
 import com.example.mcpclient.model.McpTool;
-import io.modelcontextprotocol.client.McpClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -10,10 +9,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * MCP Client Service - Uses WebClient directly, no Spring AI MCP dependency needed
+ */
 @Slf4j
 @Service
 public class McpClientService {
@@ -22,19 +25,19 @@ public class McpClientService {
     private final long timeout;
     private final String endpoint;
 
-
     public McpClientService(
             @Value("${mcp.server.url}") String mcpServerUrl,
             @Value("${mcp.server.endpoint:/sse}") String endpoint,
-            @Value("${mcp.server.timeout}") long timeout) {
+            @Value("${mcp.server.timeout:30000}") long timeout) {
         this.timeout = timeout;
         this.endpoint = endpoint;
         this.webClient = WebClient.builder()
                 .baseUrl(mcpServerUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
-    }
 
+        log.info("MCP Client initialized with URL: {} and endpoint: {}", mcpServerUrl, endpoint);
+    }
 
     /**
      * Send a message to the MCP server and get a response
@@ -53,19 +56,17 @@ public class McpClientService {
                 .bodyToMono(Map.class)
                 .timeout(Duration.ofMillis(timeout))
                 .map(response -> {
-                    // Extract the response message from the MCP server response
                     Object responseObj = response.get("response");
                     return responseObj != null ? responseObj.toString() : "No response from server";
                 })
                 .doOnError(error -> log.error("Error communicating with MCP server", error))
                 .onErrorResume(error -> {
-                    // Fallback response if MCP server is unavailable
                     return Mono.just("Error: Unable to communicate with MCP server - " + error.getMessage());
                 });
     }
 
     /**
-     * Simple echo response for testing without MCP server
+     * Simple echo response for testing
      */
     public Mono<String> getEchoResponse(String userMessage) {
         return Mono.just("Echo: " + userMessage);
@@ -95,7 +96,11 @@ public class McpClientService {
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(5))
                 .map(response -> true)
-                .onErrorResume(error -> Mono.just(false));
+                .doOnSuccess(result -> log.debug("MCP server health check: {}", result ? "UP" : "DOWN"))
+                .onErrorResume(error -> {
+                    log.warn("MCP server health check failed: {}", error.getMessage());
+                    return Mono.just(false);
+                });
     }
 
     /**
@@ -105,13 +110,12 @@ public class McpClientService {
         log.debug("Fetching available tools from MCP server at endpoint: {}", endpoint);
 
         return webClient.get()
-                .uri(endpoint)  // Use configured endpoint
+                .uri(endpoint)
                 .retrieve()
                 .bodyToMono(Map.class)
                 .timeout(Duration.ofSeconds(10))
                 .<List<McpTool>>map(response -> {
                     log.debug("Received response from MCP server: {}", response);
-                    // Extract tools from response
                     Object toolsObj = response.get("tools");
                     if (toolsObj instanceof List) {
                         @SuppressWarnings("unchecked")
