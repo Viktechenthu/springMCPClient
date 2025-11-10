@@ -2,6 +2,7 @@ package com.example.mcpclient.service;
 
 import com.example.mcpclient.model.McpTool;
 import com.example.mcpclient.model.Message;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,8 +15,6 @@ import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -60,57 +59,21 @@ public class OllamaService {
         log.debug("Sending streaming message to Ollama with MCP tool support: {}", userMessage);
 
         try {
-            // First, check if we need to call any MCP tools
-            String toolResult = tryCallMcpTool(userMessage);
+            // First, ask LLM if it needs to call any tools
+            ToolDecision decision = decideTool(userMessage);
 
-            if (toolResult != null) {
-                // A tool was called, now ask Ollama to format the response
-                List<org.springframework.ai.chat.messages.Message> messages = buildMessagesWithToolResult(
-                        userMessage, toolResult, chatHistory, token
-                );
-                Prompt prompt = new Prompt(messages);
+            if (decision != null && decision.shouldCallTool()) {
+                log.info("LLM decided to call tool: {} with arguments: {}", decision.toolName, decision.arguments);
 
-                ChatClient streamingClient = chatClientBuilder.build();
+                // Call the tool
+                String toolResult = mcpClientService.callTool(decision.toolName, decision.arguments).block();
 
-                Flux<String> contentStream = streamingClient.prompt(prompt)
-                        .stream()
-                        .content()
-                        .filter(content -> content != null && !content.isEmpty());
-
-                contentStream
-                        .doOnNext(chunk -> {
-                            log.trace("Received chunk from Ollama: {}", chunk);
-                            chunkConsumer.accept(chunk);
-                        })
-                        .doOnError(error -> {
-                            log.error("Error during streaming from Ollama", error);
-                            chunkConsumer.accept("\n\n[Error: " + error.getMessage() + "]");
-                        })
-                        .doOnComplete(() -> log.debug("Streaming completed from Ollama"))
-                        .blockLast();
+                // Now ask Ollama to format the response
+                streamFormattedResponse(userMessage, toolResult, chatHistory, token, chunkConsumer);
             } else {
                 // No tool needed, regular chat
-                List<org.springframework.ai.chat.messages.Message> messages = buildMessages(userMessage, chatHistory, token);
-                Prompt prompt = new Prompt(messages);
-
-                ChatClient streamingClient = chatClientBuilder.build();
-
-                Flux<String> contentStream = streamingClient.prompt(prompt)
-                        .stream()
-                        .content()
-                        .filter(content -> content != null && !content.isEmpty());
-
-                contentStream
-                        .doOnNext(chunk -> {
-                            log.trace("Received chunk from Ollama: {}", chunk);
-                            chunkConsumer.accept(chunk);
-                        })
-                        .doOnError(error -> {
-                            log.error("Error during streaming from Ollama", error);
-                            chunkConsumer.accept("\n\n[Error: " + error.getMessage() + "]");
-                        })
-                        .doOnComplete(() -> log.debug("Streaming completed from Ollama"))
-                        .blockLast();
+                log.debug("No tool call needed, proceeding with regular chat");
+                streamRegularResponse(userMessage, chatHistory, token, chunkConsumer);
             }
 
         } catch (Exception e) {
@@ -120,188 +83,273 @@ public class OllamaService {
     }
 
     /**
-     * Try to call an MCP tool based on the user's message
+     * Ask the LLM to decide if a tool should be called
      */
-    private String tryCallMcpTool(String userMessage) {
+    private ToolDecision decideTool(String userMessage) {
         try {
-            String lowerMessage = userMessage.toLowerCase();
-
-            // Get all patients
-            if (lowerMessage.contains("all patients") || lowerMessage.contains("list patients") ||
-                    lowerMessage.contains("show patients") || lowerMessage.contains("get patients")) {
-                log.info("Detected request for all patients");
-                return mcpClientService.callTool("get_all_patients", new HashMap<>()).block();
+            List<McpTool> tools = mcpClientService.listTools().block();
+            if (tools == null || tools.isEmpty()) {
+                return null;
             }
 
-            // Get patient by name
-            Pattern namePattern = Pattern.compile("patient.*?(?:named?|called?)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)", Pattern.CASE_INSENSITIVE);
-            Matcher nameMatcher = namePattern.matcher(userMessage);
-            if (nameMatcher.find()) {
-                String patientName = nameMatcher.group(1);
-                log.info("Detected request for patient by name: {}", patientName);
-                Map<String, Object> args = new HashMap<>();
-                args.put("name", patientName);
-                return mcpClientService.callTool("get_patient_by_name", args).block();
-            }
+            String prompt = buildToolDecisionPrompt(userMessage, tools);
 
-            // Get patient by ID
-            Pattern idPattern = Pattern.compile("patient\\s+(?:id|#)?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
-            Matcher idMatcher = idPattern.matcher(userMessage);
-            if (idMatcher.find()) {
-                Long patientId = Long.parseLong(idMatcher.group(1));
-                log.info("Detected request for patient by ID: {}", patientId);
-                Map<String, Object> args = new HashMap<>();
-                args.put("patient_id", patientId);
-                return mcpClientService.callTool("get_patient_by_id", args).block();
-            }
+            List<org.springframework.ai.chat.messages.Message> messages = Arrays.asList(
+                    new SystemMessage("You are a tool selection assistant. Respond ONLY with valid JSON."),
+                    new UserMessage(prompt)
+            );
 
-            // Get progress notes
-            if (lowerMessage.contains("progress note") || lowerMessage.contains("notes for")) {
-                Pattern notesIdPattern = Pattern.compile("(?:patient\\s+(?:id\\s+)?)?(?:#)?(\\d+)", Pattern.CASE_INSENSITIVE);
-                Matcher notesIdMatcher = notesIdPattern.matcher(userMessage);
-                if (notesIdMatcher.find()) {
-                    Long patientId = Long.parseLong(notesIdMatcher.group(1));
-                    log.info("Detected request for progress notes for patient: {}", patientId);
-                    Map<String, Object> args = new HashMap<>();
-                    args.put("patient_id", patientId);
-                    return mcpClientService.callTool("get_progress_notes", args).block();
-                }
-            }
+            Prompt chatPrompt = new Prompt(messages);
 
-            // Get care plan
-            if (lowerMessage.contains("care plan")) {
-                Pattern carePlanPattern = Pattern.compile("(?:patient\\s+(?:id\\s+)?)?(?:#)?(\\d+)", Pattern.CASE_INSENSITIVE);
-                Matcher carePlanMatcher = carePlanPattern.matcher(userMessage);
-                if (carePlanMatcher.find()) {
-                    Long patientId = Long.parseLong(carePlanMatcher.group(1));
-                    log.info("Detected request for care plan for patient: {}", patientId);
-                    Map<String, Object> args = new HashMap<>();
-                    args.put("patient_id", patientId);
-                    return mcpClientService.callTool("get_care_plan", args).block();
-                }
-            }
+            String llmResponse = chatClient.prompt(chatPrompt)
+                    .call()
+                    .content();
+
+            log.debug("Tool decision response: {}", llmResponse);
+
+            return parseToolDecision(llmResponse);
 
         } catch (Exception e) {
-            log.error("Error trying to call MCP tool", e);
+            log.error("Error in tool decision", e);
+            return null;
         }
-
-        return null;
     }
 
     /**
-     * Build messages with tool result for Ollama to format
+     * Build prompt for tool decision
      */
-    private List<org.springframework.ai.chat.messages.Message> buildMessagesWithToolResult(
-            String userMessage, String toolResult, List<Message> chatHistory, String token) {
+    private String buildToolDecisionPrompt(String userMessage, List<McpTool> tools) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Available tools:\n");
 
+        for (McpTool tool : tools) {
+            sb.append("{\n");
+            sb.append("  \"name\": \"").append(tool.getName()).append("\",\n");
+            sb.append("  \"description\": \"").append(tool.getDescription()).append("\",\n");
+            sb.append("  \"parameters\": ").append(formatParameters(tool.getInputSchema())).append("\n");
+            sb.append("}\n\n");
+        }
+
+        sb.append("User request: \"").append(userMessage).append("\"\n\n");
+        sb.append("Analyze the request and respond with ONLY a JSON object:\n\n");
+        sb.append("To call a tool:\n");
+        sb.append("{\"action\": \"call\", \"tool\": \"tool_name\", \"arguments\": {...}}\n\n");
+        sb.append("If no tool needed:\n");
+        sb.append("{\"action\": \"none\"}\n\n");
+        sb.append("Extract values from the user's message. Use numbers for IDs, strings for names.\n");
+        sb.append("Return ONLY the JSON, no explanation:");
+
+        return sb.toString();
+    }
+
+    /**
+     * Format parameters from schema
+     */
+    private String formatParameters(Object schema) {
+        if (schema == null) {
+            return "{}";
+        }
+        try {
+            if (schema instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> schemaMap = (Map<String, Object>) schema;
+                Object props = schemaMap.get("properties");
+                if (props != null) {
+                    return objectMapper.writeValueAsString(props);
+                }
+            }
+            return "{}";
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    /**
+     * Parse tool decision from LLM
+     */
+    private ToolDecision parseToolDecision(String response) {
+        if (response == null || response.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Clean response
+            String cleaned = response.trim()
+                    .replaceAll("```json\\s*", "")
+                    .replaceAll("```\\s*", "")
+                    .trim();
+
+            // Extract JSON
+            int start = cleaned.indexOf('{');
+            int end = cleaned.lastIndexOf('}');
+
+            if (start >= 0 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+
+            log.debug("Parsing tool decision JSON: {}", cleaned);
+
+            Map<String, Object> json = objectMapper.readValue(cleaned, new TypeReference<Map<String, Object>>() {});
+
+            String action = (String) json.get("action");
+
+            if (!"call".equalsIgnoreCase(action)) {
+                return null;
+            }
+
+            String toolName = (String) json.get("tool");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> arguments = (Map<String, Object>) json.getOrDefault("arguments", new HashMap<>());
+
+            return new ToolDecision(toolName, arguments);
+
+        } catch (Exception e) {
+            log.warn("Failed to parse tool decision: {}", response, e);
+            return null;
+        }
+    }
+
+    /**
+     * Stream formatted response with tool result
+     */
+    private void streamFormattedResponse(String userMessage, String toolResult,
+                                         List<Message> chatHistory, String token,
+                                         Consumer<String> chunkConsumer) {
         List<org.springframework.ai.chat.messages.Message> messages = new ArrayList<>();
 
-        // Add system message with tool context
-        messages.add(new SystemMessage("""
-                You are a helpful AI Assistant with access to a patient care system.
-                
+        messages.add(new SystemMessage(String.format("""
                 The user asked: "%s"
                 
-                I retrieved this data from the patient care system:
+                Retrieved data:
                 %s
                 
-                Please format this information in a clear, professional, and easy-to-read manner.
-                - Present the data in a structured format
-                - Highlight key information
-                - Use proper formatting (bold, lists, tables where appropriate)
-                - Be conversational and helpful
-                - If the data shows an error, explain it clearly to the user
-                
-                Do not mention that you're formatting data or that you received JSON.
-                Just present the information naturally as if you retrieved it yourself.
-                """.formatted(userMessage, toolResult)));
+                Format this information clearly and professionally.
+                Present it in a natural, conversational way.
+                Use formatting (headings, lists, tables) where helpful.
+                Do not mention JSON or technical details.
+                """, userMessage, toolResult)));
 
-        // Add chat history for context
         if (chatHistory != null && !chatHistory.isEmpty()) {
-            // Only include recent history (last 3 exchanges)
-            int startIndex = Math.max(0, chatHistory.size() - 6);
-            List<Message> recentHistory = chatHistory.subList(startIndex, chatHistory.size());
-
-            messages.addAll(recentHistory.stream()
-                    .map(msg -> {
-                        if ("user".equals(msg.getRole())) {
-                            return new UserMessage(msg.getContent());
-                        } else {
-                            return new org.springframework.ai.chat.messages.AssistantMessage(msg.getContent());
-                        }
-                    })
-                    .toList());
+            int start = Math.max(0, chatHistory.size() - 4);
+            chatHistory.subList(start, chatHistory.size()).forEach(msg -> {
+                if ("user".equals(msg.getRole())) {
+                    messages.add(new UserMessage(msg.getContent()));
+                } else {
+                    messages.add(new org.springframework.ai.chat.messages.AssistantMessage(msg.getContent()));
+                }
+            });
         }
 
-        // Add current user message
-        messages.add(new UserMessage("Please format and present this information clearly."));
+        messages.add(new UserMessage("Please present this information."));
 
-        return messages;
+        streamResponse(messages, chunkConsumer);
     }
 
     /**
-     * Build the message list for Ollama (regular chat without tools)
+     * Stream regular response without tools
+     */
+    private void streamRegularResponse(String userMessage, List<Message> chatHistory,
+                                       String token, Consumer<String> chunkConsumer) {
+        List<org.springframework.ai.chat.messages.Message> messages = buildMessages(userMessage, chatHistory, token);
+        streamResponse(messages, chunkConsumer);
+    }
+
+    /**
+     * Stream response helper
+     */
+    private void streamResponse(List<org.springframework.ai.chat.messages.Message> messages,
+                                Consumer<String> chunkConsumer) {
+        Prompt prompt = new Prompt(messages);
+        ChatClient streamingClient = chatClientBuilder.build();
+
+        Flux<String> contentStream = streamingClient.prompt(prompt)
+                .stream()
+                .content()
+                .filter(content -> content != null && !content.isEmpty());
+
+        contentStream
+                .doOnNext(chunk -> {
+                    log.trace("Chunk: {}", chunk);
+                    chunkConsumer.accept(chunk);
+                })
+                .doOnError(error -> {
+                    log.error("Streaming error", error);
+                    chunkConsumer.accept("\n\n[Error: " + error.getMessage() + "]");
+                })
+                .doOnComplete(() -> log.debug("Stream complete"))
+                .blockLast();
+    }
+
+    /**
+     * Build messages for regular chat
      */
     private List<org.springframework.ai.chat.messages.Message> buildMessages(
             String userMessage, List<Message> chatHistory, String token) {
 
         List<org.springframework.ai.chat.messages.Message> messages = new ArrayList<>();
 
-        // Get available tools for context
         List<McpTool> tools = mcpClientService.listTools().block();
         String toolsDescription = formatToolsForPrompt(tools);
 
-        // Add system message
         messages.add(new SystemMessage("""
-                You are a helpful AI Assistant with access to a patient care system through MCP tools.
+                You are a helpful AI assistant with access to a patient care system.
                 
                 %s
                 
-                When users ask about patients, you can tell them what information is available.
-                Be helpful and guide them on how to ask questions about patients.
-                
-                Important: You cannot directly call these tools - when a user asks for patient data,
-                I will retrieve it for you and you will format the response.
+                When users ask about patient data, I will retrieve it for you automatically.
+                Your job is to have natural conversations and present information clearly.
                 """.formatted(toolsDescription)));
 
-        // Add optional token info if provided
         if (token != null && !token.isEmpty()) {
-            messages.add(new SystemMessage("Authentication token is available for secure operations."));
+            messages.add(new SystemMessage("Authentication is available."));
         }
 
-        // Add chat history
         if (chatHistory != null && !chatHistory.isEmpty()) {
-            messages.addAll(chatHistory.stream()
-                    .map(msg -> {
-                        if ("user".equals(msg.getRole())) {
-                            return new UserMessage(msg.getContent());
-                        } else {
-                            return new org.springframework.ai.chat.messages.AssistantMessage(msg.getContent());
-                        }
-                    })
-                    .toList());
+            chatHistory.forEach(msg -> {
+                if ("user".equals(msg.getRole())) {
+                    messages.add(new UserMessage(msg.getContent()));
+                } else {
+                    messages.add(new org.springframework.ai.chat.messages.AssistantMessage(msg.getContent()));
+                }
+            });
         }
 
-        // Add current user message
         messages.add(new UserMessage(userMessage));
 
         return messages;
     }
 
     /**
-     * Format available tools for the prompt
+     * Format tools for prompt
      */
     private String formatToolsForPrompt(List<McpTool> tools) {
         if (tools == null || tools.isEmpty()) {
-            return "No tools are currently available.";
+            return "No tools available.";
         }
 
-        StringBuilder sb = new StringBuilder("Available patient care tools:\n\n");
+        StringBuilder sb = new StringBuilder("Available capabilities:\n\n");
         for (McpTool tool : tools) {
-            sb.append("- **").append(tool.getName()).append("**: ")
-                    .append(tool.getDescription()).append("\n");
+            sb.append("- ").append(tool.getDescription()).append("\n");
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Tool decision holder
+     */
+    private static class ToolDecision {
+        String toolName;
+        Map<String, Object> arguments;
+
+        ToolDecision(String toolName, Map<String, Object> arguments) {
+            this.toolName = toolName;
+            this.arguments = arguments;
+        }
+
+        boolean shouldCallTool() {
+            return toolName != null && !toolName.isEmpty();
+        }
     }
 }
