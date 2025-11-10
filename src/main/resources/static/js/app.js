@@ -12,11 +12,16 @@ const chatTitle = document.getElementById('chat-title');
 const renameSessionBtn = document.getElementById('rename-session-btn');
 const clearSessionBtn = document.getElementById('clear-session-btn');
 const deleteSessionBtn = document.getElementById('delete-session-btn');
+const toolsList = document.getElementById('tools-list');
+const refreshToolsBtn = document.getElementById('refresh-tools-btn');
 
 // Sidebar toggle elements
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 const sidebar = document.querySelector('.sidebar');
 const mainContent = document.querySelector('.main-content');
+
+// Tools state
+let tools = [];
 
 // Speech Recognition Setup
 let recognition = null;

@@ -3,6 +3,7 @@ package com.example.mcpclient.controller;
 import com.example.mcpclient.dto.ChatRequest;
 import com.example.mcpclient.dto.ChatResponse;
 import com.example.mcpclient.model.ChatSession;
+import com.example.mcpclient.model.McpTool;
 import com.example.mcpclient.model.Message;
 import com.example.mcpclient.service.McpClientService;
 import com.example.mcpclient.service.OllamaService;
@@ -247,9 +248,12 @@ public class ChatController {
     @GetMapping("/tools")
     public ResponseEntity<?> getTools() {
         try {
-            return ResponseEntity.ok(mcpClientService.listTools().block());
+            log.debug("Fetching tools from MCP server");
+            List<McpTool> toolsList = mcpClientService.listTools().block();
+            log.info("Retrieved {} tools from MCP server", toolsList != null ? toolsList.size() : 0);
+            return ResponseEntity.ok(toolsList != null ? toolsList : Collections.emptyList());
         } catch (Exception e) {
-            log.error("Error fetching tools", e);
+            log.error("Error fetching tools from MCP server", e);
             return ResponseEntity.ok(Collections.emptyList());
         }
     }

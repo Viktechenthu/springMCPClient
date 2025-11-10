@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class SessionService {
-    
+
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -26,6 +26,17 @@ public class SessionService {
      */
     public ChatSession createSession(String name) {
         ChatSession session = new ChatSession(name);
+        sessions.put(session.getId(), session);
+        return session;
+    }
+
+    /**
+     * Create a new chat session with a specific ID and name
+     * This is useful when frontend has already generated a session ID
+     */
+    public ChatSession createSessionWithId(String sessionId, String name) {
+        ChatSession session = new ChatSession(name);
+        session.setId(sessionId);
         sessions.put(session.getId(), session);
         return session;
     }

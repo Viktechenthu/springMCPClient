@@ -9,7 +9,7 @@ spring:
     cache: false
     prefix: classpath:/templates/
     suffix: .html
-  
+
   # AI Configuration
   ai:
     # Ollama Configuration
@@ -24,8 +24,8 @@ spring:
 # This is for your McpClientService that uses WebClient directly
 mcp:
   server:
-    url: http://127.0.0.1:8080
-    endpoint: /mcp
+    url: http://localhost:8080/mcp
+    endpoint: ""
     timeout: 30000
 
 # Logging

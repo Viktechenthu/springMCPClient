@@ -27,16 +27,16 @@ public class McpClientService {
 
     public McpClientService(
             @Value("${mcp.server.url}") String mcpServerUrl,
-            @Value("${mcp.server.endpoint:/sse}") String endpoint,
+            @Value("${mcp.server.endpoint:}") String endpoint,
             @Value("${mcp.server.timeout:30000}") long timeout) {
         this.timeout = timeout;
-        this.endpoint = endpoint;
+        this.endpoint = endpoint != null && !endpoint.isEmpty() ? endpoint : "";
         this.webClient = WebClient.builder()
                 .baseUrl(mcpServerUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
-        log.info("MCP Client initialized with URL: {} and endpoint: {}", mcpServerUrl, endpoint);
+        log.info("MCP Client initialized with URL: {} and endpoint: '{}'", mcpServerUrl, this.endpoint);
     }
 
     /**
