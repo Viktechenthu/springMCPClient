@@ -33,7 +33,10 @@ function initSpeechRecognition() {
 
     if (!SpeechRecognition) {
         console.warn('Speech recognition not supported in this browser');
-        document.getElementById('dictate-btn').style.display = 'none';
+        const dictateBtn = document.getElementById('dictate-btn');
+        if (dictateBtn) {
+            dictateBtn.style.display = 'none';
+        }
         return;
     }
 
@@ -105,7 +108,9 @@ function initSpeechRecognition() {
 function stopListening() {
     isListening = false;
     const dictateBtn = document.getElementById('dictate-btn');
-    dictateBtn.classList.remove('listening');
+    if (dictateBtn) {
+        dictateBtn.classList.remove('listening');
+    }
     messageInput.placeholder = 'Type your message here...';
 }
 
@@ -115,6 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSessionsFromStorage();
     setupEventListeners();
     restoreSidebarState();
+    loadTools(); // Load MCP tools on startup
 });
 
 window.addEventListener('resize', handleResize);
@@ -141,6 +147,60 @@ function setupEventListeners() {
     clearSessionBtn.addEventListener('click', clearCurrentSession);
     deleteSessionBtn.addEventListener('click', deleteCurrentSession);
     sidebarToggleBtn.addEventListener('click', toggleSidebar);
+
+    if (refreshToolsBtn) {
+        refreshToolsBtn.addEventListener('click', loadTools);
+    }
+}
+
+// Load MCP tools
+async function loadTools() {
+    console.log('Loading MCP tools...');
+
+    if (toolsList) {
+        toolsList.innerHTML = '<div class="tools-loading">Loading tools...</div>';
+    }
+
+    try {
+        const response = await fetch('/api/tools');
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        tools = data || [];
+
+        console.log('Loaded tools:', tools);
+        renderTools();
+    } catch (error) {
+        console.error('Error loading tools:', error);
+        if (toolsList) {
+            toolsList.innerHTML = '<div class="tools-empty">Failed to load tools</div>';
+        }
+    }
+}
+
+// Render tools in sidebar
+function renderTools() {
+    if (!toolsList) return;
+
+    if (tools.length === 0) {
+        toolsList.innerHTML = '<div class="tools-empty">No tools available</div>';
+        return;
+    }
+
+    toolsList.innerHTML = '';
+
+    tools.forEach(tool => {
+        const toolItem = document.createElement('div');
+        toolItem.className = 'tool-item';
+        toolItem.innerHTML = `
+            <div class="tool-name">${escapeHtml(tool.name)}</div>
+            <div class="tool-description">${escapeHtml(tool.description)}</div>
+        `;
+        toolsList.appendChild(toolItem);
+    });
 }
 
 // Session Storage Management

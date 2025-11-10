@@ -20,12 +20,11 @@ spring:
           model: llama2
           temperature: 0.8
 
-# MCP Server Configuration (Custom WebClient-based integration)
-# This is for your McpClientService that uses WebClient directly
+# MCP Server Configuration
+# Connect to the patient-care-system MCP server
 mcp:
   server:
     url: http://localhost:8080/mcp
-    endpoint: ""
     timeout: 30000
 
 # Logging

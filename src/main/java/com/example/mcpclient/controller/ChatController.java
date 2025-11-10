@@ -44,20 +44,20 @@ public class ChatController {
 
         SseEmitter emitter = new SseEmitter(300000L); // 5 minute timeout
 
+        // Get or create session - THIS IS THE KEY FIX
         Optional<ChatSession> sessionOpt = sessionService.getSession(request.getSessionId());
+        ChatSession session;
+
         if (sessionOpt.isEmpty()) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data("{\"error\": \"Session not found\"}"));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-            return emitter;
+            log.info("Session {} not found in backend, creating new session with this ID", request.getSessionId());
+            // Create session with the ID from frontend to maintain consistency
+            session = sessionService.createSessionWithId(request.getSessionId(), "Chat Session");
+            log.info("Created new session: {}", session.getId());
+        } else {
+            session = sessionOpt.get();
+            log.debug("Using existing session: {}", session.getId());
         }
 
-        ChatSession session = sessionOpt.get();
         String token = req.getHeader(HttpHeaders.AUTHORIZATION);
         if (token != null) {
             token = token.replace("Bearer ", "");
